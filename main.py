@@ -13,8 +13,6 @@ app.config['SECRET_KEY'] = 'secret-key-goes-here'
 
 
 # CREATE DATABASE
-
-
 class Base(DeclarativeBase):
     pass
 
@@ -52,24 +50,30 @@ def home():
 @app.route('/register', methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        # Hasing and salting the password
+        email = request.form.get('email')
+        result = db.session.execute(db.select(User).where(User.email == email))
+        # Note, email in db is unique so will only have one result.
+        user = result.scalar()
+        if user:
+            # User already exists
+            flash("You've already signed up with that email, log in instead!")
+            return redirect(url_for('login'))
+
         hash_and_salted_password = generate_password_hash(
-            password=request.form[
-                "password"], method='pbkdf2:sha256',
-            salt_length=8)
+            request.form.get('password'),
+            method='pbkdf2:sha256',
+            salt_length=8
+        )
         new_user = User(
-            email=request.form['email'],
-            name=request.form['name'],
+            email=request.form.get('email'),
             password=hash_and_salted_password,
+            name=request.form.get('name'),
         )
         db.session.add(new_user)
         db.session.commit()
-
         login_user(new_user)
-        return render_template("secrets.html", name=request.form["name"])
-
+        return redirect(url_for("secrets"))
     return render_template("register.html")
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -78,18 +82,27 @@ def login():
         form_password=request.form['password']
         user = db.session.execute(db.select(User).filter(
             User.email == form_email)).scalar_one_or_none()
-
-    return render_template("secrets.html")
+        if user:
+            if check_password_hash(user.password,form_password):
+                login_user(user)
+                return render_template("secrets.html")
+            else:
+                flash('Password incorrect, please try again')
+        else:
+            flash('That email does not exist, please try again')
+    return render_template("login.html")
 
 
 @app.route('/secrets')
-def secrets(name):
-    return render_template("secrets.html", name=name)
+def secrets():
+    print(current_user.name)
+    return render_template("secrets.html")
 
 
 @app.route('/logout')
 def logout():
-    pass
+    logout_user()
+    return redirect(url_for('home'))
 
 
 @app.route('/download')
